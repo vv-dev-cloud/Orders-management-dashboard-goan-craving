@@ -20,7 +20,7 @@ const statusLabels = {
 };
 const toDashboardOrder = order => ({
   ...order,
-  orderNumber: "GC-" + String(order._id).slice(-7).toUpperCase(),
+  orderNumber: order.orderNumber || ("GC-" + String(order._id).slice(-8).toUpperCase()),
   customerName: order.deliveryAddress?.fullName || "Customer",
   phone: order.deliveryAddress?.phone || "",
   deliveryAddress: order.deliveryAddress
@@ -64,7 +64,7 @@ app.get("/api/orders", asyncRoute(async (req, res) => {
   if (q) {
     const escaped = q.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
     const rx = new RegExp(escaped, "i");
-    filter.$or = [{ "deliveryAddress.fullName": rx }, { "deliveryAddress.phone": rx }, { email: rx }, { customerEmail: rx }, { username: rx }, { userName: rx }, { "items.name": rx }, { paymentMethod: rx }, { paymentStatus: rx }];
+    filter.$or = [{ orderNumber: rx }, { "deliveryAddress.fullName": rx }, { "deliveryAddress.phone": rx }, { email: rx }, { customerEmail: rx }, { username: rx }, { userName: rx }, { "items.name": rx }, { paymentMethod: rx }, { paymentStatus: rx }];
     if (mongoose.Types.ObjectId.isValid(q)) filter.$or.push({ _id: new mongoose.Types.ObjectId(q) });
   }
   const found = await Order.find(filter).sort({ createdAt: -1 }).limit(250).lean();
