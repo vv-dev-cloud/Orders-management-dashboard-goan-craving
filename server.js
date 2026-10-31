@@ -45,14 +45,30 @@ app.get("/", asyncRoute(async (req, res) => {
 }));
 
 app.get("/api/orders", asyncRoute(async (req, res) => {
-  const raw = await Order.find().sort({ createdAt: -1 }).limit(100).lean();
-  let orders = raw.map(toDashboardOrder);
-  if (req.query.status && req.query.status !== "all") orders = orders.filter(o => o.status === req.query.status);
-  if (req.query.q) {
-    const q = String(req.query.q).toLowerCase();
-    orders = orders.filter(o => (o.orderNumber + " " + o.customerName).toLowerCase().includes(q));
+  const q = String(req.query.q || "").trim().slice(0, 160);
+  const status = String(req.query.status || "all");
+  const range = String(req.query.range || "all");
+  const now = new Date();
+  let from = null, to = null;
+  const day = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  if (range === "today") from = day(now);
+  if (range === "yesterday") { from = day(new Date(now.getTime()-86400000)); to = day(now); }
+  if (range === "7days") from = new Date(now.getTime()-7*86400000);
+  if (range === "30days") from = new Date(now.getTime()-30*86400000);
+  if (range === "thisMonth") from = new Date(now.getFullYear(),now.getMonth(),1);
+  if (range === "lastMonth") { from = new Date(now.getFullYear(),now.getMonth()-1,1); to = new Date(now.getFullYear(),now.getMonth(),1); }
+  const filter = {};
+  if (from || to) filter.createdAt = Object.assign({}, from ? { $gte: from } : {}, to ? { $lt: to } : {});
+  const key = status.toLowerCase().replaceAll(" ","_");
+  if (status !== "all" && statusLabels[key]) filter.orderStatus = key;
+  if (q) {
+    const escaped = q.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
+    const rx = new RegExp(escaped, "i");
+    filter.$or = [{ "deliveryAddress.fullName": rx }, { "deliveryAddress.phone": rx }, { email: rx }, { customerEmail: rx }, { username: rx }, { userName: rx }, { "items.name": rx }, { paymentMethod: rx }, { paymentStatus: rx }];
+    if (mongoose.Types.ObjectId.isValid(q)) filter.$or.push({ _id: new mongoose.Types.ObjectId(q) });
   }
-  res.json(orders);
+  const found = await Order.find(filter).sort({ createdAt: -1 }).limit(250).lean();
+  res.json(found.map(toDashboardOrder));
 }));
 
 app.patch("/api/orders/:id/status", asyncRoute(async (req, res) => {
