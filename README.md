@@ -1,25 +1,32 @@
-# Goan Craving — Orders Management Dashboard
+# Goan Craving — Order Management Dashboard
 
-A responsive front-end prototype for the Goan Craving operations team.
+Node.js + Express + EJS + JavaScript + CSS + MongoDB dashboard for managing food orders and customer support conversations.
 
-## Current demo features
-- Operations overview with sample order metrics
-- Order table with search and status filter
-- Order detail panel with customer, delivery, and payment information
-- Demo status editing workflow
-- Support inbox with accept, reply, and resolve interactions
-- CSV export of sample order records
-- Responsive desktop/mobile layout
+## Features
+- Overview counts and order-status summary from MongoDB
+- Order list with search and status filter
+- Order status editing (Placed, Confirmed, Preparing, Out for delivery, Delivered, Cancelled)
+- Customer details, items, delivery address, total and payment status fields
+- Support inbox: accept a request, send agent replies, and resolve conversations
+- CSV export
+- Responsive layout
 
 ## Run locally
-Open `index.html` in a browser. No build step is needed.
+1. Install Node.js and MongoDB.
+2. Copy .env.example to .env and set MONGODB_URI.
+3. Run npm install.
+4. Run npm run dev (or npm start).
+5. Open http://localhost:3000.
 
-## Important
-This is a UI prototype using in-memory sample data. It is not connected to Goan Craving's production order/payment records, staff authentication, or live chat transport. Refreshing the page resets demo changes. Production integration should use authenticated server APIs, enforce staff roles, and treat payment status as authoritative from the payment/order backend. Never store raw card details in this dashboard.
+## MongoDB collections
+Mongoose creates orders and supportchats collections based on models/Order.js and models/SupportChat.js.
 
-## Suggested integration sequence
-1. Add staff authentication and role-based access.
-2. Create authenticated order-list/detail and status-update API endpoints.
-3. Wire payment status from existing payment records (read-only from this console).
-4. Add a persistent support conversation/ticket model, agent assignment, and real-time messaging.
-5. Add audit logs, notifications, pagination, and reporting endpoints.
+## Add order/chat data
+The dashboard reads actual documents from MongoDB. Create order documents with orderNumber, customerName, items, total, paymentMethod, paymentStatus, and status. Support requests can be created in the supportchats collection with customer name, issue, order number, and messages.
+
+## Scope and important notes
+- This project is separate from the customer-facing Goan Craving app.
+- No login/signup is included, as requested. Keep this dashboard on a trusted/private environment; do not expose its write APIs publicly without adding staff authentication and authorization.
+- This is a basic support inbox, not a real-time chat transport. It stores agent responses in MongoDB; customer-side chat integration and live updates still need to be connected.
+- Payment status is separate from order status. Updating an order status does not modify or imply payment success.
+- Do not store full card numbers, CVVs, or other raw card credentials in this dashboard.
