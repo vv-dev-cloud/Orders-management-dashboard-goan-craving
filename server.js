@@ -88,6 +88,24 @@ app.post("/api/support/:id/messages", asyncRoute(async (req, res) => {
   res.json(chat);
 }));
 
+app.get("/api/support/:id/context", asyncRoute(async (req, res) => {
+  const chat = await SupportChat.findById(req.params.id).lean();
+  if (!chat) return res.status(404).json({ error: "Conversation not found" });
+
+  // Customer context is limited to the account linked to this support conversation.
+  const rawOrders = await Order.find({ user: chat.customerId }).sort({ createdAt: -1 }).limit(30).lean();
+  const orders = rawOrders.map(toDashboardOrder);
+  const latestAddress = rawOrders.find(order => order.deliveryAddress)?.deliveryAddress || {};
+  const customer = {
+    id: String(chat.customerId),
+    name: chat.customerName || latestAddress.fullName || "Customer",
+    email: chat.customerEmail || "",
+    phone: latestAddress.phone || "",
+    address: [latestAddress.addressLine, latestAddress.area, latestAddress.city, latestAddress.state, latestAddress.postalCode].filter(Boolean).join(", ")
+  };
+  res.json({ customer, orders });
+}));
+
 app.get("/api/support/:id", asyncRoute(async (req, res) => {
   const chat = await SupportChat.findById(req.params.id).lean();
   if (!chat) return res.status(404).json({ error: "Conversation not found" });
