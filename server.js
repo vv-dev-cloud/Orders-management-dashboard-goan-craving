@@ -64,7 +64,8 @@ app.get("/api/orders", asyncRoute(async (req, res) => {
   const key = status.toLowerCase().replaceAll(" ","_");
   if (status !== "all" && statusLabels[key]) filter.orderStatus = key;
   if (q) {
-    const escaped = q.replace(/[|\\{}()[\\]^$+*?.]/g, "\\\\$&");
+    // Escape user input before constructing a regular expression.
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rx = new RegExp(escaped, "i");
     filter.$or = [
       { orderNumber: rx },
