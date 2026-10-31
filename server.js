@@ -47,7 +47,7 @@ app.get("/", asyncRoute(async (req, res) => {
 app.get("/api/orders", asyncRoute(async (req, res) => {
   // Normalize common order-ID input formats such as "#GC-ABC12345" and "GCABC12345".
   const q = String(req.query.q || "").trim().slice(0, 160);
-  const normalizedOrderQuery = q.toUpperCase().replace(/[\\s#]/g, "").replace(/^GC-?/, "");
+  const normalizedOrderQuery = q.toUpperCase().replace(/[\s#]/g, "").replace(/^GC-?/, "");
   const status = String(req.query.status || "all");
   const range = String(req.query.range || "all");
   const now = new Date();
