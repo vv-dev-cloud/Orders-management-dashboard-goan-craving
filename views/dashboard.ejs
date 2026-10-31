@@ -10,22 +10,32 @@
   <aside class="sidebar">
     <div class="brand"><span class="brand-icon">🌿</span><span>Goan Craving</span></div>
     <p class="nav-label">WORKSPACE</p>
-    <a class="nav active" href="/">▦ <span>Overview</span></a>
-    <a class="nav" href="#orders">▤ <span>Orders</span><b><%= orders.length %></b></a>
-    <a class="nav" href="#support">◌ <span>Customer support</span><b><%= chats.length %></b></a>
-    <a class="nav" href="#reports">▥ <span>Reports</span></a>
+    <button class="nav-menu-toggle" id="workspaceMenuToggle" aria-expanded="true">☷ <span>Workspace pages</span><span class="menu-chevron">⌄</span></button>
+    <nav class="workspace-menu" id="workspaceMenu">
+      <button class="nav active" data-page="overview">▦ <span>Overview</span></button>
+      <button class="nav" data-page="orders">▤ <span>Orders & history</span><b><%= orders.length %></b></button>
+      <button class="nav" data-page="support">◌ <span>Customer support</span><b><%= chats.length %></b></button>
+      <button class="nav" data-page="reports">▥ <span>Reports</span></button>
+    </nav>
     <div class="sidebar-bottom">Operations console<br><strong>Dashboard workspace</strong></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div><small>Goan Craving / Operations</small><h2>Order management</h2></div><div class="admin-chip"><span class="avatar">OP</span><span><strong>Operations</strong><small>Dashboard</small></span></div></header>
+    <header class="topbar"><div><small>Goan Craving / Operations</small><h2 id="pageTitle">Overview</h2></div><div class="admin-chip"><span class="avatar">OP</span><span><strong>Operations</strong><small>Dashboard</small></span></div></header>
     <section class="content">
-      <div class="welcome"><div><h1>Orders overview <span>👋</span></h1><p>Track orders and support requests in one place.</p></div><button id="exportCsv" class="button primary">↓ Export orders</button></div>
+      <section class="dashboard-page active-page" id="page-overview"><div class="welcome"><div><h1>Welcome to operations <span>👋</span></h1><p>Choose a workspace page from the menu to manage orders, customer conversations, and reporting.</p></div></div>
       <div class="stats">
         <article class="stat"><div>All orders <span>▤</span></div><strong><%= orders.length %></strong><small>Orders currently in dashboard</small></article>
         <article class="stat"><div>In progress <span>◷</span></div><strong><%= (statusCounts.Confirmed||0)+(statusCounts.Preparing||0)+(statusCounts["Out for delivery"]||0) %></strong><small>Confirmed, preparing, delivery</small></article>
         <article class="stat"><div>Delivered <span>✓</span></div><strong><%= statusCounts.Delivered||0 %></strong><small>Successfully completed</small></article>
         <article class="stat"><div>Cancelled <span>↶</span></div><strong><%= statusCounts.Cancelled||0 %></strong><small>Cancelled orders</small></article>
       </div>
+      <div class="overview-shortcuts">
+        <button class="shortcut-card" data-page="orders"><span>▤</span><strong>Orders & history</strong><small>Find orders, payment status, products, and dates.</small><b>Open orders →</b></button>
+        <button class="shortcut-card" data-page="support"><span>◌</span><strong>Customer support</strong><small>Reply and review customer order details.</small><b>Open support →</b></button>
+        <button class="shortcut-card" data-page="reports"><span>▥</span><strong>Reports</strong><small>Review order status summaries.</small><b>Open reports →</b></button>
+      </div></section>
+      <section class="dashboard-page" id="page-orders">
+      <div class="page-heading"><div><h1>Orders & history</h1><p>Search customers, products, order IDs, payment, and dates.</p></div><button id="exportCsv" class="button primary">↓ Export orders</button></div>
       <div class="columns">
         <section class="panel" id="orders"><div class="panel-head"><h3>Recent orders</h3><span class="muted">Latest first</span></div>
           <div class="toolbar"><input id="orderSearch" class="field" placeholder="Search email, username, order ID, or product"><select id="dateRange" class="field"><option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="7days">Last 7 days</option><option value="30days">Last 30 days</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option></select><select id="statusFilter" class="field"><option value="all">All statuses</option><% ["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].forEach(s=>{ %><option><%= s %></option><% }) %></select></div>
@@ -40,15 +50,21 @@
           <% if (!orders.length) { %><tr><td colspan="6" class="empty">No orders yet. Orders from your database will appear here.</td></tr><% } %>
           </tbody></table></div><div class="panel-foot">Showing up to 250 matching records · Search customer, product, order and payment</div>
         </section>
-        <section class="panel" id="support"><div class="panel-head"><h3>Customer support</h3><span class="status waiting"><%= chats.length %> open</span></div>
+      </div></section>
+      <section class="dashboard-page" id="page-support">
+      <div class="page-heading"><div><h1>Customer support</h1><p>Open a conversation to reply and view linked customer orders.</p></div></div>
+        <section class="panel support-page-panel" id="support"><div class="panel-head"><h3>Customer support</h3><span class="status waiting"><%= chats.length %> open</span></div>
           <div class="chat-list" id="chatList">
           <% chats.forEach(chat => { %><button class="chat-card" data-chat="<%= chat._id %>"><span class="chat-avatar"><%= chat.customerName.split(" ").map(w=>w[0]).slice(0,2).join("") %></span><span class="chat-info"><strong><%= chat.customerName %></strong><small><%= chat.issue %></small><small class="chat-order"><%= chat.orderNumber||"No order linked" %></small></span><span class="status <%= chat.status.toLowerCase() %>"><%= chat.status %></span></button><% }) %>
           <% if (!chats.length) { %><div class="empty">No open support requests.</div><% } %>
           </div>
           <div class="chat-panel" id="chatPanel"><section class="customer-context" id="customerContext"><div class="context-loading">Select a conversation to load customer details.</div></section><div class="chat-panel-head"><strong id="chatHeading">Choose a conversation</strong><button id="resolveChat" class="button tiny">Resolve</button></div><div id="chatMessages" class="messages"></div><form id="replyForm" class="reply-form"><input id="replyText" class="field" placeholder="Write a reply…" autocomplete="off"><button class="button primary" type="submit">Send</button></form></div>
         </section>
-      </div>
+      </section>
+      <section class="dashboard-page" id="page-reports">
+      <div class="page-heading"><div><h1>Reports</h1><p>Order status summaries from your database.</p></div></div>
       <section class="panel reports" id="reports"><div class="panel-head"><h3>Order status summary</h3><span class="muted">Live database totals</span></div><div class="summary-bars"><% ["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].forEach(s=>{ const n=statusCounts[s]||0; %><div class="bar-row"><span><%= s %></span><div class="bar-track"><i style="width:<%= orders.length ? Math.min(100,n/orders.length*100) : 0 %>%"></i></div><strong><%= n %></strong></div><% }) %></div></section>
+      </section>
     </section>
   </main>
 </div>
