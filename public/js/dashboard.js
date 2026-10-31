@@ -8,57 +8,53 @@ function statusClass(status) {
   return String(status || "").toLowerCase().replaceAll(" ", "-");
 }
 
-function filterOrders() {
-  const query = document.getElementById("orderSearch").value.trim().toLowerCase();
+let orderSearchTimer;
+async function filterOrders() {
+  const q = document.getElementById("orderSearch").value.trim();
   const status = document.getElementById("statusFilter").value;
-  document.querySelectorAll("#ordersTable tr[data-search]").forEach(row => {
-    const matchesQuery = row.dataset.search.includes(query);
-    const matchesStatus = status === "all" || row.dataset.status === status;
-    row.hidden = !(matchesQuery && matchesStatus);
-  });
+  const range = document.getElementById("dateRange").value;
+  const params = new URLSearchParams({ q, status, range });
+  try {
+    const response = await fetch(`/api/orders?${params.toString()}`);
+    const orders = await response.json();
+    if (!response.ok) throw new Error(orders.error || "Could not load order history");
+    const body = document.getElementById("ordersTable");
+    body.innerHTML = orders.length ? orders.map(order => {
+      const itemSummary = (order.items || []).map(item => `${item.name} × ${item.quantity}`).join(", ");
+      const date = order.createdAt ? new Date(order.createdAt).toLocaleString() : "—";
+      const pay = `${order.paymentStatus || "Pending"} · ${order.paymentMethod || "—"}`;
+      return `<tr data-search="${escapeHtml([order.orderNumber,order.customerName,order.phone,order.email,itemSummary,pay].join(" ").toLowerCase())}" data-status="${escapeHtml(order.status)}">
+        <td><strong class="order-id">${escapeHtml(order.orderNumber)}</strong><small>${escapeHtml(date)}</small></td>
+        <td><strong>${escapeHtml(order.customerName)}</strong><small>${escapeHtml(itemSummary || "No item details")}</small></td>
+        <td><strong>₹${Number(order.total||0).toLocaleString("en-IN")}</strong></td>
+        <td><span class="payment">${escapeHtml(order.paymentStatus || "Pending")}</span><small>${escapeHtml(order.paymentMethod || "—")}</small></td>
+        <td><span class="status ${statusClass(order.status)}">${escapeHtml(order.status)}</span></td>
+        <td><button class="button tiny view-order" data-order="${escapeHtml(order._id)}" data-number="${escapeHtml(order.orderNumber)}" data-customer="${escapeHtml(order.customerName)}" data-total="${Number(order.total||0)}" data-payment="${escapeHtml(pay)}" data-status="${escapeHtml(order.status)}">Details</button></td></tr>`;
+    }).join("") : '<tr><td colspan="6" class="empty">No matching orders found.</td></tr>';
+    document.querySelectorAll(".view-order").forEach(button => button.addEventListener("click", () => showOrderDetails(button)));
+  } catch (error) { console.error(error); }
 }
-
-document.getElementById("orderSearch").addEventListener("input", filterOrders);
+function showOrderDetails(button) {
+  const { number, customer, total, payment, status: currentStatus } = button.dataset;
+  const id = button.dataset.order;
+  document.getElementById("orderDetailBody").innerHTML = `<div class="detail-grid">
+    <div class="detail-cell"><small>Order ID</small><strong>${escapeHtml(number)}</strong></div>
+    <div class="detail-cell"><small>Customer</small><strong>${escapeHtml(customer)}</strong></div>
+    <div class="detail-cell"><small>Order total</small><strong>₹${Number(total).toLocaleString("en-IN")}</strong></div>
+    <div class="detail-cell"><small>Payment status / method</small><strong>${escapeHtml(payment)}</strong></div></div>
+    <label for="statusUpdate">Order status</label><div class="status-edit"><select class="field" id="statusUpdate">${["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].map(s=>`<option ${s===currentStatus?"selected":""}>${s}</option>`).join("")}</select><button class="button primary" id="saveOrderStatus">Save status</button></div>
+    <p class="notice">Payment status is displayed separately and is not changed by order-status updates.</p>`;
+  document.getElementById("orderModal").classList.add("visible");
+  document.getElementById("saveOrderStatus").onclick = async () => {
+    const response = await fetch(`/api/orders/${encodeURIComponent(id)}/status`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status:document.getElementById("statusUpdate").value}) });
+    const result = await response.json(); if (!response.ok) return alert(result.error || "Could not update order");
+    document.getElementById("orderModal").classList.remove("visible"); await filterOrders();
+  };
+}
+document.getElementById("orderSearch").addEventListener("input", () => { clearTimeout(orderSearchTimer); orderSearchTimer=setTimeout(filterOrders,250); });
 document.getElementById("statusFilter").addEventListener("change", filterOrders);
-
-document.querySelectorAll(".view-order").forEach(button => {
-  button.addEventListener("click", async () => {
-    const row = button.closest("tr");
-    const cells = row.querySelectorAll("td");
-    const id = button.dataset.order;
-    const orderNumber = cells[0].innerText.split("\n")[0];
-    const customer = cells[1].innerText.split("\n")[0];
-    const total = cells[2].innerText;
-    const payment = cells[3].innerText;
-    const currentStatus = cells[4].innerText;
-    document.getElementById("orderDetailBody").innerHTML = `
-      <div class="detail-grid">
-        <div class="detail-cell"><small>Order</small><strong>${escapeHtml(orderNumber)}</strong></div>
-        <div class="detail-cell"><small>Customer</small><strong>${escapeHtml(customer)}</strong></div>
-        <div class="detail-cell"><small>Total</small><strong>${escapeHtml(total)}</strong></div>
-        <div class="detail-cell"><small>Payment status / method</small><strong>${escapeHtml(payment)}</strong></div>
-      </div>
-      <label for="statusUpdate">Order status</label>
-      <div class="status-edit"><select class="field" id="statusUpdate">
-        ${["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].map(s => `<option ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
-      </select><button class="button primary" id="saveOrderStatus">Save status</button></div>
-      <p class="notice">Order status is updated in MongoDB. Payment status is kept separate and is not changed here.</p>`;
-    document.getElementById("orderModal").classList.add("visible");
-    document.getElementById("saveOrderStatus").addEventListener("click", async () => {
-      const status = document.getElementById("statusUpdate").value;
-      const response = await fetch(`/api/orders/${encodeURIComponent(id)}/status`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status })
-      });
-      const result = await response.json();
-      if (!response.ok) return alert(result.error || "Could not update order status");
-      cells[4].innerHTML = `<span class="status ${statusClass(result.status)}">${escapeHtml(result.status)}</span>`;
-      row.dataset.status = result.status;
-      document.getElementById("orderModal").classList.remove("visible");
-      filterOrders();
-    });
-  });
-});
-
+document.getElementById("dateRange").addEventListener("change", filterOrders);
+filterOrders();
 document.getElementById("closeModal").addEventListener("click", () => {
   document.getElementById("orderModal").classList.remove("visible");
 });
