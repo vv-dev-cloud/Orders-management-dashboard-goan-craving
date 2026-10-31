@@ -28,7 +28,7 @@
       </div>
       <div class="columns">
         <section class="panel" id="orders"><div class="panel-head"><h3>Recent orders</h3><span class="muted">Latest first</span></div>
-          <div class="toolbar"><input id="orderSearch" class="field" placeholder="Search order or customer"><select id="statusFilter" class="field"><option value="all">All statuses</option><% ["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].forEach(s=>{ %><option><%= s %></option><% }) %></select></div>
+          <div class="toolbar"><input id="orderSearch" class="field" placeholder="Search email, username, order ID, or product"><select id="dateRange" class="field"><option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="7days">Last 7 days</option><option value="30days">Last 30 days</option><option value="thisMonth">This month</option><option value="lastMonth">Last month</option></select><select id="statusFilter" class="field"><option value="all">All statuses</option><% ["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].forEach(s=>{ %><option><%= s %></option><% }) %></select></div>
           <div class="table-wrap"><table><thead><tr><th>ORDER</th><th>CUSTOMER</th><th>TOTAL</th><th>PAYMENT</th><th>STATUS</th><th></th></tr></thead><tbody id="ordersTable">
           <% orders.forEach(order => { %><tr data-search="<%= (order.orderNumber+' '+order.customerName).toLowerCase() %>" data-status="<%= order.status %>">
             <td><strong class="order-id"><%= order.orderNumber %></strong><small><%= order.createdAt ? new Date(order.createdAt).toLocaleString() : "—" %></small></td>
@@ -38,7 +38,7 @@
             <td><button class="button tiny view-order" data-order="<%= order._id %>">Details</button></td></tr>
           <% }) %>
           <% if (!orders.length) { %><tr><td colspan="6" class="empty">No orders yet. Orders from your database will appear here.</td></tr><% } %>
-          </tbody></table></div><div class="panel-foot">Showing up to 50 recent records</div>
+          </tbody></table></div><div class="panel-foot">Showing up to 250 matching records · Search customer, product, order and payment</div>
         </section>
         <section class="panel" id="support"><div class="panel-head"><h3>Customer support</h3><span class="status waiting"><%= chats.length %> open</span></div>
           <div class="chat-list" id="chatList">
