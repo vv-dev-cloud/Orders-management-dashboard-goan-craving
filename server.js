@@ -45,7 +45,9 @@ app.get("/", asyncRoute(async (req, res) => {
 }));
 
 app.get("/api/orders", asyncRoute(async (req, res) => {
+  // Normalize common order-ID input formats such as "#GC-ABC12345" and "GCABC12345".
   const q = String(req.query.q || "").trim().slice(0, 160);
+  const normalizedOrderQuery = q.toUpperCase().replace(/[\\s#]/g, "").replace(/^GC-?/, "");
   const status = String(req.query.status || "all");
   const range = String(req.query.range || "all");
   const now = new Date();
@@ -62,9 +64,22 @@ app.get("/api/orders", asyncRoute(async (req, res) => {
   const key = status.toLowerCase().replaceAll(" ","_");
   if (status !== "all" && statusLabels[key]) filter.orderStatus = key;
   if (q) {
-    const escaped = q.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
+    const escaped = q.replace(/[|\\{}()[\\]^$+*?.]/g, "\\\\$&");
     const rx = new RegExp(escaped, "i");
-    filter.$or = [{ orderNumber: rx }, { "deliveryAddress.fullName": rx }, { "deliveryAddress.phone": rx }, { email: rx }, { customerEmail: rx }, { username: rx }, { userName: rx }, { "items.name": rx }, { paymentMethod: rx }, { paymentStatus: rx }];
+    filter.$or = [
+      { orderNumber: rx },
+      { "deliveryAddress.fullName": rx }, { "deliveryAddress.phone": rx },
+      { email: rx }, { customerEmail: rx }, { username: rx }, { userName: rx },
+      { "items.name": rx }, { paymentMethod: rx }, { paymentStatus: rx }
+    ];
+    // Match the deterministic display ID for older records without a saved orderNumber.
+    if (/^[A-F0-9]{1,24}$/.test(normalizedOrderQuery)) {
+      filter.$or.push({ $expr: { $regexMatch: {
+        input: { $concat: ["GC-", { $substrBytes: [{ $toString: "$_id" }, 16, 8] }] },
+        regex: normalizedOrderQuery,
+        options: "i"
+      } } });
+    }
     if (mongoose.Types.ObjectId.isValid(q)) filter.$or.push({ _id: new mongoose.Types.ObjectId(q) });
   }
   const found = await Order.find(filter).sort({ createdAt: -1 }).limit(250).lean();
