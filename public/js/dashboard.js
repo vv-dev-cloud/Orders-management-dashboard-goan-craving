@@ -1,4 +1,21 @@
 let selectedChatId = null;
+const pageNames = { overview: "Overview", orders: "Orders & history", support: "Customer support", reports: "Reports" };
+function showPage(name) {
+  if (!pageNames[name]) name = "overview";
+  document.querySelectorAll(".dashboard-page").forEach(page => page.classList.toggle("active-page", page.id === "page-" + name));
+  document.querySelectorAll("[data-page].nav").forEach(link => link.classList.toggle("active", link.dataset.page === name));
+  document.getElementById("pageTitle").textContent = pageNames[name];
+  document.querySelector(".content").scrollTop = 0;
+  if (name === "orders") filterOrders();
+}
+document.querySelectorAll("[data-page]").forEach(item => item.addEventListener("click", () => showPage(item.dataset.page)));
+document.getElementById("workspaceMenuToggle").addEventListener("click", () => {
+  const menu = document.getElementById("workspaceMenu");
+  const open = menu.classList.toggle("menu-open");
+  document.getElementById("workspaceMenuToggle").setAttribute("aria-expanded", String(open));
+});
+document.getElementById("workspaceMenu").classList.add("menu-open");
+
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
