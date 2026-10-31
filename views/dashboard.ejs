@@ -20,7 +20,7 @@
     <div class="sidebar-bottom">Operations console<br><strong>Dashboard workspace</strong></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div><small>Goan Craving / Operations</small><h2 id="pageTitle">Overview</h2></div><div class="admin-chip"><span class="avatar">OP</span><span><strong>Operations</strong><small>Dashboard</small></span></div></header>
+    <header class="topbar"><div><small>Goan Craving / Operations</small><h2 id="pageTitle">Overview</h2></div><div class="admin-chip"><span class="avatar"><%= employee.name.slice(0,2).toUpperCase() %></span><span><strong><%= employee.name %></strong><small><%= employee.role %></small></span><form method="post" action="/logout"><button class="button" type="submit">Sign out</button></form></div></header>
     <section class="content">
       <section class="dashboard-page active-page" id="page-overview"><div class="welcome"><div><h1>Welcome to operations <span>👋</span></h1><p>Choose a workspace page from the menu to manage orders, customer conversations, and reporting.</p></div></div>
       <div class="stats">
