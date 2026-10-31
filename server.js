@@ -2,6 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
+const session = require("express-session");
+const MongoStore = require("connect-mongo");
+const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
+const Employee = require("./models/Employee");
 const Order = require("./models/Order");
 const SupportChat = require("./models/SupportChat");
 
@@ -12,6 +17,25 @@ app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use(session({
+  name: "gc-ops.sid",
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI }),
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 8 * 60 * 60 * 1000
+  }
+}));
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false });
+const requireEmployee = (req, res, next) => {
+  if (req.session.employee) return next();
+  if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Please sign in to continue." });
+  return res.redirect("/login");
+};
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const statusLabels = {
@@ -33,7 +57,40 @@ const toDashboardOrder = order => ({
   createdAt: order.createdAt
 });
 
-app.get("/", asyncRoute(async (req, res) => {
+app.get("/login", (req, res) => {
+  if (req.session.employee) return res.redirect("/");
+  res.render("employee-login", { error: null });
+});
+
+app.post("/login", loginLimiter, asyncRoute(async (req, res) => {
+  const employeeId = String(req.body.employeeId || "").trim().toUpperCase();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  if (!employeeId || !email || !password) {
+    return res.status(400).render("employee-login", { error: "Enter your employee ID, email, and password." });
+  }
+  const employee = await Employee.findOne({ employeeId, email, status: "Active" }).select("+passwordHash");
+  const valid = employee && await bcrypt.compare(password, employee.passwordHash);
+  if (!valid) {
+    return res.status(401).render("employee-login", { error: "The details are incorrect or this account is inactive." });
+  }
+  req.session.employee = {
+    id: String(employee._id),
+    employeeId: employee.employeeId,
+    name: employee.name,
+    email: employee.email,
+    role: employee.role
+  };
+  employee.lastActiveAt = new Date();
+  await employee.save();
+  req.session.save(() => res.redirect("/"));
+}));
+
+app.post("/logout", requireEmployee, (req, res) => {
+  req.session.destroy(() => res.redirect("/login"));
+});
+
+app.get("/", requireEmployee, asyncRoute(async (req, res) => {
   const [rawOrders, chats] = await Promise.all([
     Order.find().sort({ createdAt: -1 }).limit(100).lean(),
     SupportChat.find({ status: { $ne: "Resolved" } }).sort({ updatedAt: -1 }).limit(100).lean()
@@ -41,10 +98,10 @@ app.get("/", asyncRoute(async (req, res) => {
   const orders = rawOrders.map(toDashboardOrder);
   const statusCounts = {};
   for (const order of orders) statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
-  res.render("dashboard", { orders, chats, statusCounts, error: null });
+  res.render("dashboard", { orders, chats, statusCounts, error: null, employee: req.session.employee });
 }));
 
-app.get("/api/orders", asyncRoute(async (req, res) => {
+app.get("/api/orders", requireEmployee, asyncRoute(async (req, res) => {
   // Normalize common order-ID input formats such as "#GC-ABC12345" and "GCABC12345".
   const q = String(req.query.q || "").trim().slice(0, 160);
   const normalizedOrderQuery = q.toUpperCase().replace(/[\s#]/g, "").replace(/^GC-?/, "");
@@ -87,7 +144,7 @@ app.get("/api/orders", asyncRoute(async (req, res) => {
   res.json(found.map(toDashboardOrder));
 }));
 
-app.patch("/api/orders/:id/status", asyncRoute(async (req, res) => {
+app.patch("/api/orders/:id/status", requireEmployee, asyncRoute(async (req, res) => {
   const allowed = {
     "Placed": "placed", "Confirmed": "confirmed", "Preparing": "preparing",
     "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
@@ -98,7 +155,7 @@ app.patch("/api/orders/:id/status", asyncRoute(async (req, res) => {
   res.json(toDashboardOrder(order));
 }));
 
-app.post("/api/support/:id/accept", asyncRoute(async (req, res) => {
+app.post("/api/support/:id/accept", requireEmployee, asyncRoute(async (req, res) => {
   const chat = await SupportChat.findOneAndUpdate(
     { _id: req.params.id, status: { $ne: "Resolved" } },
     { status: "Active", assignedAgent: String(req.body.agent || "Dashboard agent").slice(0, 100) },
@@ -108,7 +165,7 @@ app.post("/api/support/:id/accept", asyncRoute(async (req, res) => {
   res.json(chat);
 }));
 
-app.post("/api/support/:id/messages", asyncRoute(async (req, res) => {
+app.post("/api/support/:id/messages", requireEmployee, asyncRoute(async (req, res) => {
   const text = String(req.body.text || "").trim().slice(0, 1200);
   if (!text) return res.status(400).json({ error: "Message cannot be empty" });
   const chat = await SupportChat.findById(req.params.id);
@@ -120,7 +177,7 @@ app.post("/api/support/:id/messages", asyncRoute(async (req, res) => {
   res.json(chat);
 }));
 
-app.get("/api/support/:id/context", asyncRoute(async (req, res) => {
+app.get("/api/support/:id/context", requireEmployee, asyncRoute(async (req, res) => {
   const chat = await SupportChat.findById(req.params.id).lean();
   if (!chat) return res.status(404).json({ error: "Conversation not found" });
 
@@ -138,13 +195,13 @@ app.get("/api/support/:id/context", asyncRoute(async (req, res) => {
   res.json({ customer, orders });
 }));
 
-app.get("/api/support/:id", asyncRoute(async (req, res) => {
+app.get("/api/support/:id", requireEmployee, asyncRoute(async (req, res) => {
   const chat = await SupportChat.findById(req.params.id).lean();
   if (!chat) return res.status(404).json({ error: "Conversation not found" });
   res.json(chat);
 }));
 
-app.post("/api/support/:id/resolve", asyncRoute(async (req, res) => {
+app.post("/api/support/:id/resolve", requireEmployee, asyncRoute(async (req, res) => {
   const chat = await SupportChat.findByIdAndUpdate(req.params.id, { status: "Resolved" }, { new: true });
   if (!chat) return res.status(404).json({ error: "Conversation not found" });
   res.json(chat);
