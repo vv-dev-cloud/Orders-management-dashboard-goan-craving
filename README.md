@@ -105,6 +105,9 @@ The order model uses `strict: false` to tolerate additional fields from the main
 | GET | `/` | Render dashboard with recent orders and unresolved support |
 | GET | `/api/orders` | Search/filter orders |
 | PATCH | `/api/orders/:id/status` | Validate and update official order status |
+| GET | `/api/maps/search?q=...` | Search Indian addresses and places through Stadia Maps |
+| GET | `/api/maps/reverse?lat=...&lon=...` | Resolve map coordinates to a nearby address |
+| POST | `/api/maps/route` | Calculate a route for 2–10 coordinates; accepts `costing` (`auto`, `motorcycle`, `bicycle`, `pedestrian`) |
 | POST | `/api/support/:id/accept` | Accept/assign a support conversation |
 | GET | `/api/support/:id` | Load a support conversation |
 | GET | `/api/support/:id/context` | Load related customer and order context |
@@ -130,6 +133,7 @@ PORT=3000
 | `SESSION_SECRET` | Secret used to sign session cookies; use a long, unique value |
 | `NODE_ENV` | Set to `production` for production cookie/proxy behavior |
 | `PORT` | Server port; defaults to 3000 |
+| `STADIA_MAPS_API_KEY` | Private Stadia Maps key used by authenticated backend map endpoints |
 
 Do not commit `.env`, database credentials, session secrets, or employee passwords. Use your hosting provider's environment-variable settings for deployment. The production server trusts the hosting proxy so secure cookies can work behind HTTPS termination.
 
@@ -189,3 +193,32 @@ An employee account must already exist in the shared `employees` collection and 
 ## Related project
 
 - [Goan Craving Delivery System Dashboard](https://github.com/vv-dev-cloud/goan.craving-delivery-system-dashboard-) — separate delivery dashboard project; shared database/schema and verification integration are required for a complete end-to-end delivery workflow.
+
+
+## Stadia Maps integration
+
+The employee dashboard exposes authenticated server-side map endpoints. The Stadia Maps API key is read only from `STADIA_MAPS_API_KEY` and is sent to Stadia using the `Authorization: Stadia-Auth ...` header. It is never returned to browser JavaScript.
+
+Configure `STADIA_MAPS_API_KEY` in your Render service environment variables (and in local `.env` for development). Do not commit the real key. Restart/redeploy the service after setting it.
+
+Example requests (must be signed in as an employee):
+```http
+GET /api/maps/search?q=Panaji%20Goa
+GET /api/maps/reverse?lat=15.4909&lon=73.8278
+POST /api/maps/route
+Content-Type: application/json
+
+{
+  "locations": [
+    { "lat": 15.4909, "lon": 73.8278 },
+    { "lat": 15.2993, "lon": 74.1240 }
+  ],
+  "costing": "motorcycle"
+}
+```
+
+Search and reverse responses are normalized for the dashboard. Route responses retain Stadia's route geometry, distance, duration, and maneuver data. Requests validate coordinates and limit route requests to 2–10 points. Provider errors are translated to safe API errors; usage-limit responses return HTTP 429.
+
+Order delivery addresses now accept optional `latitude` and `longitude` fields. Existing orders remain valid; these fields can be populated by a future customer checkout or employee map-picker UI.
+
+**Plan/licensing note:** Stadia's Free plan is restricted to non-commercial use. Goan Craving is intended as a commercial food-delivery service, so use this integration for development/evaluation only unless Stadia confirms your use is covered or you move to an appropriate commercial plan. The free allowance is not permission for production commercial usage.
