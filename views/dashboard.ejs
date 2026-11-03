@@ -15,6 +15,7 @@
       <button class="nav active" data-page="overview">▦ <span>Overview</span></button>
       <button class="nav" data-page="orders">▤ <span>Orders & history</span><b><%= orders.length %></b></button>
       <button class="nav" data-page="support">◌ <span>Customer support</span><b><%= chats.length %></b></button>
+      <button class="nav" data-page="agents">♙ <span>Delivery agents</span></button>
       <button class="nav" data-page="reports">▥ <span>Reports</span></button>
     </nav>
     <div class="sidebar-bottom">Operations console<br><strong>Dashboard workspace</strong></div>
@@ -32,6 +33,7 @@
       <div class="overview-shortcuts">
         <button class="shortcut-card" data-page="orders"><span>▤</span><strong>Orders & history</strong><small>Find orders, payment status, products, and dates.</small><b>Open orders →</b></button>
         <button class="shortcut-card" data-page="support"><span>◌</span><strong>Customer support</strong><small>Reply and review customer order details.</small><b>Open support →</b></button>
+        <button class="shortcut-card" data-page="agents"><span>♙</span><strong>Delivery agents</strong><small>Create delivery logins and manage access.</small><b>Manage agents →</b></button>
         <button class="shortcut-card" data-page="reports"><span>▥</span><strong>Reports</strong><small>Review order status summaries.</small><b>Open reports →</b></button>
       </div></section>
       <section class="dashboard-page" id="page-orders">
@@ -60,6 +62,14 @@
           </div>
           <div class="chat-panel" id="chatPanel"><section class="customer-context" id="customerContext"><div class="context-loading">Select a conversation to load customer details.</div></section><div class="chat-panel-head"><strong id="chatHeading">Choose a conversation</strong><button id="resolveChat" class="button tiny">Resolve</button></div><div id="chatMessages" class="messages"></div><form id="replyForm" class="reply-form"><input id="replyText" class="field" placeholder="Write a reply…" autocomplete="off"><button class="button primary" type="submit">Send</button></form></div>
         </section>
+      </section>
+      <section class="dashboard-page" id="page-agents">
+      <div class="page-heading"><div><h1>Delivery agents</h1><p>Create a login for the delivery portal. Share the generated ID and one-time password securely with the agent.</p></div></div>
+      <section class="panel"><div class="panel-head"><h3>Create delivery agent</h3></div>
+        <form id="agentCreateForm" class="toolbar"><input class="field" name="name" placeholder="Full name" required maxlength="100"><input class="field" name="email" type="email" placeholder="Email address" required maxlength="160"><input class="field" name="phone" placeholder="Phone (optional)" maxlength="30"><button class="button primary" type="submit">Create account</button></form>
+        <div id="agentCredentialResult" class="notice" hidden></div>
+      </section>
+      <section class="panel"><div class="panel-head"><h3>Agent accounts</h3><button class="button tiny" id="reloadAgents" type="button">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>AGENT ID</th><th>NAME</th><th>EMAIL</th><th>PHONE</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody id="agentsTable"><tr><td colspan="6" class="empty">Loading agents…</td></tr></tbody></table></div></section>
       </section>
       <section class="dashboard-page" id="page-reports">
       <div class="page-heading"><div><h1>Reports</h1><p>Order status summaries from your database.</p></div></div>
