@@ -9,6 +9,7 @@ const rateLimit = require("express-rate-limit");
 const Employee = require("./models/Employee");
 const Order = require("./models/Order");
 const SupportChat = require("./models/SupportChat");
+const deliveryAgentRoutes = require("./routes/deliveryAgentRoutes");
 
 const app = express();
 // Render terminates HTTPS at its proxy; trust the proxy so secure session cookies are issued.
@@ -87,6 +88,8 @@ app.post("/login", loginLimiter, asyncRoute(async (req, res) => {
   await employee.save();
   req.session.save(() => res.redirect("/"));
 }));
+
+app.use("/api/delivery-agents", requireEmployee, deliveryAgentRoutes);
 
 app.post("/logout", requireEmployee, (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
