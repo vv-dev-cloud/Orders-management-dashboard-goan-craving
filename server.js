@@ -217,7 +217,11 @@ app.post("/api/support/:id/resolve", requireEmployee, asyncRoute(async (req, res
 
 app.use((err, req, res, next) => {
   console.error(err);
-  if (req.path.startsWith("/api/")) return res.status(500).json({ error: "Something went wrong" });
+  if (req.path.startsWith("/api/")) {
+    const status = Number(err.status) >= 400 && Number(err.status) <= 599 ? Number(err.status) : 500;
+    const message = status === 500 ? "Something went wrong" : String(err.message || "Map request failed");
+    return res.status(status).json({ error: message });
+  }
   res.status(500).send("Dashboard error. Check server logs.");
 });
 
