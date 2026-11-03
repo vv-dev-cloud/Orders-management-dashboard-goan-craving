@@ -1,5 +1,5 @@
 let selectedChatId = null;
-const pageNames = { overview: "Overview", orders: "Orders & history", support: "Customer support", reports: "Reports" };
+const pageNames = { overview: "Overview", orders: "Orders & history", support: "Customer support", reports: "Reports", agents: "Delivery agents" };
 function showPage(name) {
   if (!pageNames[name]) name = "overview";
   document.querySelectorAll(".dashboard-page").forEach(page => page.classList.toggle("active-page", page.id === "page-" + name));
@@ -7,6 +7,7 @@ function showPage(name) {
   document.getElementById("pageTitle").textContent = pageNames[name];
   document.querySelector(".content").scrollTop = 0;
   if (name === "orders") filterOrders();
+  if (name === "agents") loadAgents();
 }
 document.querySelectorAll("[data-page]").forEach(item => item.addEventListener("click", () => showPage(item.dataset.page)));
 document.getElementById("workspaceMenuToggle").addEventListener("click", () => {
@@ -165,3 +166,56 @@ document.getElementById("exportCsv").addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(link.href);
 });
+
+const agentEscape = value => escapeHtml(value == null ? "" : value);
+async function loadAgents() {
+  const body = document.getElementById("agentsTable");
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="6" class="empty">Loading agents…</td></tr>';
+  try {
+    const response = await fetch("/api/delivery-agents");
+    const agents = await response.json();
+    if (!response.ok) throw new Error(agents.error || "Could not load agents");
+    body.innerHTML = agents.length ? agents.map(agent => `<tr>
+      <td><strong class="order-id">${agentEscape(agent.agentId)}</strong></td><td>${agentEscape(agent.name)}</td>
+      <td>${agentEscape(agent.email)}</td><td>${agentEscape(agent.phone || "—")}</td>
+      <td><span class="status ${agent.isActive ? "delivered" : "cancelled"}">${agent.isActive ? "Active" : "Inactive"}</span></td>
+      <td><button class="button tiny agent-toggle" data-id="${agentEscape(agent._id)}" data-active="${agent.isActive}">${agent.isActive ? "Disable" : "Enable"}</button>
+      <button class="button tiny agent-reset" data-id="${agentEscape(agent._id)}">Reset password</button></td></tr>`).join("") : '<tr><td colspan="6" class="empty">No delivery agents created yet.</td></tr>';
+    body.querySelectorAll(".agent-toggle").forEach(button => button.addEventListener("click", async () => {
+      const response = await fetch(`/api/delivery-agents/${encodeURIComponent(button.dataset.id)}/status`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isActive:button.dataset.active !== "true"})});
+      const result = await response.json(); if (!response.ok) return alert(result.error || "Could not update access");
+      loadAgents();
+    }));
+    body.querySelectorAll(".agent-reset").forEach(button => button.addEventListener("click", async () => {
+      if (!confirm("Reset this agent's password? The current password will stop working.")) return;
+      const response = await fetch(`/api/delivery-agents/${encodeURIComponent(button.dataset.id)}/reset-password`, {method:"POST"});
+      const result = await response.json(); if (!response.ok) return alert(result.error || "Could not reset password");
+      showAgentSecret(result.agentId, result.password);
+    }));
+  } catch (error) { body.innerHTML = `<tr><td colspan="6" class="empty">${agentEscape(error.message)}</td></tr>`; }
+}
+function showAgentSecret(agentId, password) {
+  const host = document.getElementById("agentCredentialResult");
+  host.hidden = false;
+  host.innerHTML = `<strong>Credentials — copy and share securely</strong><p>Delivery Agent ID: <code>${agentEscape(agentId)}</code></p><p>Temporary password: <code>${agentEscape(password)}</code></p><button type="button" class="button tiny" id="copyAgentCredentials">Copy credentials</button><small> This password is shown only now. Store it securely.</small>`;
+  document.getElementById("copyAgentCredentials").onclick = async () => {
+    try { await navigator.clipboard.writeText(`Delivery Agent ID: ${agentId}\nPassword: ${password}`); alert("Credentials copied."); }
+    catch (_) { alert("Copy is unavailable; select and copy the credentials above."); }
+  };
+}
+const agentForm = document.getElementById("agentCreateForm");
+if (agentForm) agentForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const submit = agentForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const payload = Object.fromEntries(new FormData(agentForm).entries());
+    const response = await fetch("/api/delivery-agents", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const result = await response.json();
+    if (!response.ok) return alert(result.error || "Could not create agent");
+    agentForm.reset(); showAgentSecret(result.agent.agentId, result.password); await loadAgents();
+  } catch (error) { alert(error.message || "Could not create agent"); }
+  finally { submit.disabled = false; }
+});
+document.getElementById("reloadAgents")?.addEventListener("click", loadAgents);
