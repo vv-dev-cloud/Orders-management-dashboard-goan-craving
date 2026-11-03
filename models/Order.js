@@ -5,7 +5,7 @@ const orderSchema = new mongoose.Schema({
   orderNumber: { type: String, index: true },
   user: mongoose.Schema.Types.ObjectId,
   items: [{ name: String, quantity: Number, unitPrice: Number }],
-  deliveryAddress: { fullName: String, phone: String, addressLine: String, area: String, city: String, state: String, postalCode: String },
+  deliveryAddress: { fullName: String, phone: String, addressLine: String, area: String, city: String, state: String, postalCode: String, latitude: Number, longitude: Number },
   paymentMethod: String,
   paymentStatus: String,
   orderStatus: String,
