@@ -44,7 +44,7 @@ const requireEmployee = (req, res, next) => {
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const statusLabels = {
-  placed: "Placed", confirmed: "Confirmed", preparing: "Preparing",
+  placed: "Placed", confirmed: "Confirmed", preparing: "Preparing", ready_for_pickup: "Ready for pickup",
   out_for_delivery: "Out for delivery", delivered: "Delivered", cancelled: "Cancelled"
 };
 const toDashboardOrder = order => ({
