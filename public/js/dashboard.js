@@ -1,5 +1,5 @@
 let selectedChatId = null;
-const pageNames = { overview: "Overview", orders: "Orders & history", support: "Customer support", reports: "Reports", agents: "Delivery agents" };
+const pageNames = { overview: "Overview", orders: "Orders & history", support: "Customer support", reports: "Reports", agents: "Delivery agents", delivery: "Delivery management" };
 function showPage(name) {
   if (!pageNames[name]) name = "overview";
   document.querySelectorAll(".dashboard-page").forEach(page => page.classList.toggle("active-page", page.id === "page-" + name));
@@ -8,6 +8,7 @@ function showPage(name) {
   document.querySelector(".content").scrollTop = 0;
   if (name === "orders") filterOrders();
   if (name === "agents") loadAgents();
+  if (name === "delivery") loadDeliveryOps();
 }
 document.querySelectorAll("[data-page]").forEach(item => item.addEventListener("click", () => showPage(item.dataset.page)));
 document.getElementById("workspaceMenuToggle").addEventListener("click", () => {
@@ -219,3 +220,103 @@ if (agentForm) agentForm.addEventListener("submit", async event => {
   finally { submit.disabled = false; }
 });
 document.getElementById("reloadAgents")?.addEventListener("click", loadAgents);
+
+async function loadDeliveryOps() {
+  const orderSelect = document.getElementById("deliveryOrderSelect");
+  const agentSelect = document.getElementById("deliveryAgentSelect");
+  const tasksBody = document.getElementById("deliveryTasksTable");
+  const reportsBody = document.getElementById("deliveryReportsTable");
+  if (!orderSelect || !agentSelect || !tasksBody || !reportsBody) return;
+  try {
+    const [ordersResponse, agentsResponse, tasksResponse, reportsResponse] = await Promise.all([
+      fetch("/api/orders?status=all"), fetch("/api/delivery-agents"),
+      fetch("/api/delivery-pipeline/tasks"), fetch("/api/delivery-pipeline/reports?status=PENDING")
+    ]);
+    const [orders, agents, taskData, reportData] = await Promise.all([
+      ordersResponse.json(), agentsResponse.json(), tasksResponse.json(), reportsResponse.json()
+    ]);
+    if (!ordersResponse.ok || !agentsResponse.ok || !tasksResponse.ok || !reportsResponse.ok) {
+      throw new Error(orders.error || agents.error || taskData.error || reportData.error || "Could not load delivery operations.");
+    }
+    const eligible = orders.filter(order => ["Confirmed", "Preparing", "Ready for pickup"].includes(order.status));
+    orderSelect.innerHTML = '<option value="">Choose an eligible order</option>' + eligible.map(order =>
+      `<option value="${agentEscape(order._id)}">${agentEscape(order.orderNumber)} · ${agentEscape(order.customerName)} · ${agentEscape(order.status)}</option>`
+    ).join("");
+    if (!eligible.length) orderSelect.innerHTML = '<option value="">No confirmed/preparing/ready orders</option>';
+    const activeAgents = agents.filter(agent => agent.isActive && agent.role === "delivery");
+    agentSelect.innerHTML = '<option value="">Choose an active agent</option>' + activeAgents.map(agent =>
+      `<option value="${agentEscape(agent._id)}">${agentEscape(agent.name)} · ${agentEscape(agent.agentId)}</option>`
+    ).join("");
+    if (!activeAgents.length) agentSelect.innerHTML = '<option value="">No active delivery agents</option>';
+
+    const tasks = taskData.tasks || [];
+    tasksBody.innerHTML = tasks.length ? tasks.map(task => {
+      const order = task.order || {};
+      const agent = task.deliveryPerson || {};
+      const address = order.deliveryAddress || {};
+      const destination = [address.addressLine, address.area, address.city, address.postalCode].filter(Boolean).join(", ");
+      const action = task.status === "picked_up"
+        ? `<button class="button tiny confirm-dispatch" data-id="${agentEscape(task._id)}">Confirm dispatch</button>`
+        : agent.agentId ? agentEscape(agent.agentId) : "—";
+      return `<tr><td><strong>${agentEscape(order.orderNumber || String(task.order || "").slice(-8))}</strong><small>${agentEscape(order.orderStatus || "")}</small></td>
+        <td>${agentEscape(agent.name || "Unassigned")}<small>${agentEscape(agent.agentId || "")}</small></td>
+        <td><span class="status ${statusClass(task.status)}">${agentEscape(task.status.replaceAll("_"," "))}</span></td>
+        <td>${agentEscape(destination || task.dropoff?.address || "Address unavailable")}</td><td>${action}</td></tr>`;
+    }).join("") : '<tr><td colspan="5" class="empty">No delivery tasks have been assigned.</td></tr>';
+
+    const reports = reportData.reports || [];
+    reportsBody.innerHTML = reports.length ? reports.map(report => `
+      <tr><td><strong>${agentEscape(report.order?.orderNumber || "Order")}</strong></td>
+      <td>${agentEscape(report.deliveryBoy?.name || "Agent")}<small>${agentEscape(report.deliveryBoy?.agentId || "")}</small></td>
+      <td>${agentEscape(report.result.replaceAll("_"," "))}</td><td>${agentEscape(report.proofNote || "No note provided")}</td>
+      <td><button class="button tiny primary verify-report" data-id="${agentEscape(report._id)}" data-status="APPROVED">Approve</button>
+      <button class="button tiny reject-report" data-id="${agentEscape(report._id)}" data-status="REJECTED">Reject</button></td></tr>`
+    ).join("") : '<tr><td colspan="5" class="empty">No reports are awaiting verification.</td></tr>';
+
+    tasksBody.querySelectorAll(".confirm-dispatch").forEach(button => button.addEventListener("click", async () => {
+      const response = await fetch(`/api/delivery-pipeline/tasks/${encodeURIComponent(button.dataset.id)}/dispatch`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const result = await response.json();
+      if (!response.ok) return alert(result.error || "Could not confirm dispatch.");
+      await loadDeliveryOps();
+    }));
+    reportsBody.querySelectorAll(".verify-report").forEach(button => button.addEventListener("click", () => verifyDeliveryReport(button.dataset.id, "APPROVED")));
+    reportsBody.querySelectorAll(".reject-report").forEach(button => button.addEventListener("click", () => verifyDeliveryReport(button.dataset.id, "REJECTED")));
+  } catch (error) {
+    tasksBody.innerHTML = `<tr><td colspan="5" class="empty">${agentEscape(error.message)}</td></tr>`;
+    reportsBody.innerHTML = '<tr><td colspan="5" class="empty">Delivery reports could not be loaded.</td></tr>';
+  }
+}
+
+async function verifyDeliveryReport(id, verificationStatus) {
+  const employeeNote = window.prompt(verificationStatus === "APPROVED" ? "Optional verification note:" : "Reason for rejecting this report:");
+  if (employeeNote === null) return;
+  const response = await fetch(`/api/delivery-pipeline/reports/${encodeURIComponent(id)}/verify`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ verificationStatus, employeeNote })
+  });
+  const result = await response.json();
+  if (!response.ok) return alert(result.error || "Could not verify delivery report.");
+  await loadDeliveryOps();
+}
+
+document.getElementById("deliveryAssignForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const orderId = document.getElementById("deliveryOrderSelect").value;
+  const agentId = document.getElementById("deliveryAgentSelect").value;
+  const notice = document.getElementById("deliveryAssignNotice");
+  if (!orderId || !agentId) { notice.textContent = "Choose both an eligible order and an active agent."; return; }
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/delivery-pipeline/orders/${encodeURIComponent(orderId)}/assign`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Could not assign delivery.");
+    notice.textContent = `Assigned successfully · ${result.task.assignmentId}`;
+    await loadDeliveryOps();
+  } catch (error) { notice.textContent = error.message; }
+  finally { button.disabled = false; }
+});
+document.getElementById("refreshDeliveryOps")?.addEventListener("click", loadDeliveryOps);
+
