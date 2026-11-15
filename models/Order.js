@@ -9,6 +9,7 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: String,
   paymentStatus: String,
   orderStatus: String,
+  statusEvents: [{ status: String, actorId: mongoose.Schema.Types.ObjectId, actorRole: String, note: String, createdAt: Date }],
   total: Number,
   createdAt: Date,
   updatedAt: Date
