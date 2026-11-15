@@ -11,7 +11,7 @@ const eventSchema = new mongoose.Schema({
 const schema = new mongoose.Schema({
   order: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodOrder', required: true, unique: true, index: true },
   restaurant: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
-  deliveryPerson: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+  deliveryPerson: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryAgent', default: null, index: true },
   assignmentId: { type: String, unique: true, sparse: true, index: true },
   status: { type: String, enum: ['pending_assignment', 'assigned', 'accepted', 'at_restaurant', 'picked_up', 'en_route', 'delivered', 'assignment_failed', 'delivery_failed', 'cancelled', 'returned'], default: 'pending_assignment', index: true },
   pickup: { address: { type: String, default: '' }, latitude: Number, longitude: Number },
