@@ -166,6 +166,7 @@ app.patch("/api/orders/:id/status", requireEmployee, asyncRoute(async (req, res)
   const previousStatus = order.orderStatus;
   if (previousStatus !== nextStatus) {
     order.orderStatus = nextStatus;
+    order.statusEvents = order.statusEvents || [];
     order.statusEvents.push({
       status: nextStatus,
       actorId: req.session.employee.id,
