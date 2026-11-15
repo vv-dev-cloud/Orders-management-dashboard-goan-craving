@@ -36,6 +36,12 @@ router.post('/orders/:orderId/assign', asyncRoute(async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   if (!agent) return res.status(404).json({ error: 'Active delivery agent not found.' });
   const existing = await DeliveryTask.findOne({ order: order._id });
+  const conflictingTask = await DeliveryTask.findOne({
+    deliveryPerson: agent._id,
+    status: { $in: ['assigned', 'accepted', 'at_restaurant', 'picked_up', 'en_route'] },
+    ...(existing ? { _id: { $ne: existing._id } } : {})
+  }).select('_id order status').lean();
+  if (conflictingTask) return res.status(409).json({ error: 'This agent already has an active delivery. Choose an available agent.' });
   const currentOrderStatus = String(order.orderStatus || '').toLowerCase();
   const retryingFailedDelivery = currentOrderStatus === 'out_for_delivery' && existing &&
     ['assignment_failed', 'delivery_failed', 'returned'].includes(existing.status);
