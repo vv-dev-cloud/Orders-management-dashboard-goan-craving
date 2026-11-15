@@ -85,6 +85,10 @@ router.patch('/tasks/:taskId/dispatch', asyncRoute(async (req, res) => {
   if (!mongoose.isValidObjectId(taskId)) return res.status(400).json({ error: 'Invalid delivery task ID.' });
   const task = await DeliveryTask.findOne({ _id: taskId, status: 'picked_up' });
   if (!task) return res.status(404).json({ error: 'A picked-up task was not found.' });
+  const order = await Order.findById(task.order).select('orderStatus').lean();
+  if (!order || String(order.orderStatus || '').toLowerCase() !== 'ready_for_pickup') {
+    return res.status(409).json({ error: 'The order must be marked ready for pickup before dispatch can be confirmed.' });
+  }
   const now = new Date();
   task.status = 'en_route';
   task.events.push({ status: 'en_route', actorId: req.session.employee.id, actorRole: 'employee', note: 'Employee confirmed dispatch.', createdAt: now });
