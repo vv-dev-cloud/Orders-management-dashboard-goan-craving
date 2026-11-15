@@ -7,6 +7,13 @@ const DeliveryTask = require('../models/DeliveryTask');
 const DeliveryReport = require('../models/DeliveryReport');
 
 const router = express.Router();
+const requireOperationsRole = (req, res, next) => {
+  if (!['Order manager', 'Delivery coordinator'].includes(req.session.employee?.role)) {
+    return res.status(403).json({ error: 'Only order managers and delivery coordinators can manage delivery assignments.' });
+  }
+  next();
+};
+router.use(requireOperationsRole);
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 router.get('/tasks', asyncRoute(async (req, res) => {
@@ -112,7 +119,13 @@ router.patch('/reports/:reportId/verify', asyncRoute(async (req, res) => {
   const report = await DeliveryReport.findOne({ _id: reportId, verificationStatus: 'PENDING' });
   if (!report) return res.status(404).json({ error: 'Pending delivery report not found.' });
   const now = new Date();
+  const orderRecord = await Order.findById(report.order).select('orderStatus').lean();
+  if (!orderRecord) return res.status(404).json({ error: 'The linked customer order no longer exists.' });
+  if (report.result === 'DELIVERED' && ['cancelled', 'rejected'].includes(String(orderRecord.orderStatus || '').toLowerCase())) {
+    return res.status(409).json({ error: 'A cancelled or rejected order cannot be verified as delivered.' });
+  }
   const task = await DeliveryTask.findOne({ order: report.order, deliveryPerson: report.deliveryBoy });
+  if (!task) return res.status(409).json({ error: 'The delivery assignment no longer matches this agent. Reconcile the assignment before verification.' });
 
   // Apply idempotent operational changes before closing the report. If a write fails,
   // the report remains pending and an employee can safely retry the verification.
