@@ -238,7 +238,7 @@ async function loadDeliveryOps() {
     if (!ordersResponse.ok || !agentsResponse.ok || !tasksResponse.ok || !reportsResponse.ok) {
       throw new Error(orders.error || agents.error || taskData.error || reportData.error || "Could not load delivery operations.");
     }
-    const eligible = orders.filter(order => ["Confirmed", "Preparing", "Ready for pickup"].includes(order.status));
+    const eligible = orders.filter(order => ["Confirmed", "Preparing", "Ready for pickup", "Out for delivery"].includes(order.status));
     orderSelect.innerHTML = '<option value="">Choose an eligible order</option>' + eligible.map(order =>
       `<option value="${agentEscape(order._id)}">${agentEscape(order.orderNumber)} · ${agentEscape(order.customerName)} · ${agentEscape(order.status)}</option>`
     ).join("");
