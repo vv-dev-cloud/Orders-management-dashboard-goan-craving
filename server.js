@@ -11,6 +11,7 @@ const Order = require("./models/Order");
 const SupportChat = require("./models/SupportChat");
 const deliveryAgentRoutes = require("./routes/deliveryAgentRoutes");
 const mapRoutes = require("./routes/mapRoutes");
+const deliveryPipelineRoutes = require("./routes/deliveryPipelineRoutes");
 
 const app = express();
 // Render terminates HTTPS at its proxy; trust the proxy so secure session cookies are issued.
@@ -43,7 +44,7 @@ const requireEmployee = (req, res, next) => {
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const statusLabels = {
-  placed: "Placed", confirmed: "Confirmed", preparing: "Preparing",
+  placed: "Placed", confirmed: "Confirmed", preparing: "Preparing", ready_for_pickup: "Ready for pickup",
   out_for_delivery: "Out for delivery", delivered: "Delivered", cancelled: "Cancelled"
 };
 const toDashboardOrder = order => ({
@@ -91,6 +92,7 @@ app.post("/login", loginLimiter, asyncRoute(async (req, res) => {
 }));
 
 app.use("/api/delivery-agents", requireEmployee, deliveryAgentRoutes);
+app.use("/api/delivery-pipeline", requireEmployee, deliveryPipelineRoutes);
 // Stadia Maps requests are proxied through the server so the API key is never sent to the browser.
 app.use("/api/maps", requireEmployee, mapRoutes);
 
@@ -155,12 +157,26 @@ app.get("/api/orders", requireEmployee, asyncRoute(async (req, res) => {
 app.patch("/api/orders/:id/status", requireEmployee, asyncRoute(async (req, res) => {
   const allowed = {
     "Placed": "placed", "Confirmed": "confirmed", "Preparing": "preparing",
-    "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
+    "Ready for pickup": "ready_for_pickup", "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
   };
   if (!allowed[req.body.status]) return res.status(400).json({ error: "Invalid order status" });
-  const order = await Order.findByIdAndUpdate(req.params.id, { orderStatus: allowed[req.body.status] }, { new: true, runValidators: true }).lean();
+  const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
-  res.json(toDashboardOrder(order));
+  const nextStatus = allowed[req.body.status];
+  const previousStatus = order.orderStatus;
+  if (previousStatus !== nextStatus) {
+    order.orderStatus = nextStatus;
+    order.statusEvents = order.statusEvents || [];
+    order.statusEvents.push({
+      status: nextStatus,
+      actorId: req.session.employee.id,
+      actorRole: "employee",
+      note: "Order status updated by " + req.session.employee.employeeId,
+      createdAt: new Date()
+    });
+    await order.save();
+  }
+  res.json(toDashboardOrder(order.toObject()));
 }));
 
 app.post("/api/support/:id/accept", requireEmployee, asyncRoute(async (req, res) => {
