@@ -11,6 +11,7 @@ const Order = require("./models/Order");
 const SupportChat = require("./models/SupportChat");
 const deliveryAgentRoutes = require("./routes/deliveryAgentRoutes");
 const mapRoutes = require("./routes/mapRoutes");
+const deliveryPipelineRoutes = require("./routes/deliveryPipelineRoutes");
 
 const app = express();
 // Render terminates HTTPS at its proxy; trust the proxy so secure session cookies are issued.
@@ -91,6 +92,7 @@ app.post("/login", loginLimiter, asyncRoute(async (req, res) => {
 }));
 
 app.use("/api/delivery-agents", requireEmployee, deliveryAgentRoutes);
+app.use("/api/delivery-pipeline", requireEmployee, deliveryPipelineRoutes);
 // Stadia Maps requests are proxied through the server so the API key is never sent to the browser.
 app.use("/api/maps", requireEmployee, mapRoutes);
 
