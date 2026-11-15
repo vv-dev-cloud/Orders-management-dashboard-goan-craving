@@ -61,7 +61,7 @@ function showOrderDetails(button) {
     <div class="detail-cell"><small>Customer</small><strong>${escapeHtml(customer)}</strong></div>
     <div class="detail-cell"><small>Order total</small><strong>₹${Number(total).toLocaleString("en-IN")}</strong></div>
     <div class="detail-cell"><small>Payment status / method</small><strong>${escapeHtml(payment)}</strong></div></div>
-    <label for="statusUpdate">Order status</label><div class="status-edit"><select class="field" id="statusUpdate">${["Placed","Confirmed","Preparing","Out for delivery","Delivered","Cancelled"].map(s=>`<option ${s===currentStatus?"selected":""}>${s}</option>`).join("")}</select><button class="button primary" id="saveOrderStatus">Save status</button></div>
+    <label for="statusUpdate">Order status</label><div class="status-edit"><select class="field" id="statusUpdate">${["Placed","Confirmed","Preparing","Ready for pickup","Out for delivery","Delivered","Cancelled"].map(s=>`<option ${s===currentStatus?"selected":""}>${s}</option>`).join("")}</select><button class="button primary" id="saveOrderStatus">Save status</button></div>
     <p class="notice">Payment status is displayed separately and is not changed by order-status updates.</p>`;
   document.getElementById("orderModal").classList.add("visible");
   document.getElementById("saveOrderStatus").onclick = async () => {
