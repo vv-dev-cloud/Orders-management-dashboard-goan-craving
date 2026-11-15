@@ -12,7 +12,7 @@ const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next))
 router.get('/tasks', asyncRoute(async (req, res) => {
   const status = String(req.query.status || '').trim();
   const filter = status ? { status } : {};
-  const tasks = await DeliveryTask.find(filter).sort({ updatedAt: -1 }).limit(200).lean();
+  const tasks = await DeliveryTask.find(filter).sort({ updatedAt: -1 }).limit(200).populate('order', 'orderNumber orderStatus deliveryAddress total createdAt').populate('deliveryPerson', 'name agentId phone').lean();
   res.json({ tasks });
 }));
 
