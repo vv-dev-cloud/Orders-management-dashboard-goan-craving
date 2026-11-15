@@ -28,14 +28,17 @@ router.post('/orders/:orderId/assign', asyncRoute(async (req, res) => {
   ]);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   if (!agent) return res.status(404).json({ error: 'Active delivery agent not found.' });
-  if (!['confirmed', 'preparing', 'ready_for_pickup'].includes(String(order.orderStatus || '').toLowerCase())) {
-    return res.status(409).json({ error: 'This order is not ready for delivery assignment.' });
+  const existing = await DeliveryTask.findOne({ order: order._id });
+  const currentOrderStatus = String(order.orderStatus || '').toLowerCase();
+  const retryingFailedDelivery = currentOrderStatus === 'out_for_delivery' && existing &&
+    ['assignment_failed', 'delivery_failed', 'returned'].includes(existing.status);
+  if (!['confirmed', 'preparing', 'ready_for_pickup'].includes(currentOrderStatus) && !retryingFailedDelivery) {
+    return res.status(409).json({ error: 'This order is not ready for delivery assignment or retry.' });
   }
   const sellers = [...new Set((order.items || []).map(item => String(item.seller || '')).filter(Boolean))];
   if (sellers.length !== 1) {
     return res.status(422).json({ error: 'The order must contain items from exactly one registered restaurant before it can be assigned.' });
   }
-  const existing = await DeliveryTask.findOne({ order: order._id });
   if (existing && !['pending_assignment', 'assignment_failed', 'delivery_failed', 'returned'].includes(existing.status)) {
     return res.status(409).json({ error: 'This order already has an active delivery assignment.' });
   }
