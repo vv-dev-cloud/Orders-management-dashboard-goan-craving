@@ -16,6 +16,7 @@
       <button class="nav" data-page="orders">▤ <span>Orders & history</span><b><%= orders.length %></b></button>
       <button class="nav" data-page="support">◌ <span>Customer support</span><b><%= chats.length %></b></button>
       <button class="nav" data-page="agents">♙ <span>Delivery agents</span></button>
+      <button class="nav" data-page="delivery">🚚 <span>Delivery management</span></button>
       <button class="nav" data-page="reports">▥ <span>Reports</span></button>
     </nav>
     <div class="sidebar-bottom">Operations console<br><strong>Dashboard workspace</strong></div>
@@ -70,6 +71,23 @@
         <div id="agentCredentialResult" class="notice" hidden></div>
       </section>
       <section class="panel"><div class="panel-head"><h3>Agent accounts</h3><button class="button tiny" id="reloadAgents" type="button">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>AGENT ID</th><th>NAME</th><th>EMAIL</th><th>PHONE</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody id="agentsTable"><tr><td colspan="6" class="empty">Loading agents…</td></tr></tbody></table></div></section>
+      </section>
+      </section>
+      <section class="dashboard-page" id="page-delivery">
+        <div class="page-heading"><div><h1>Delivery management</h1><p>Assign canonical Goan Craving orders, confirm dispatch, and verify agent delivery reports.</p></div><button class="button tiny" id="refreshDeliveryOps" type="button">Refresh</button></div>
+        <section class="panel"><div class="panel-head"><h3>Assign a delivery agent</h3></div>
+          <form id="deliveryAssignForm" class="toolbar">
+            <select class="field" id="deliveryOrderSelect" required><option value="">Loading eligible orders…</option></select>
+            <select class="field" id="deliveryAgentSelect" required><option value="">Loading active agents…</option></select>
+            <button class="button primary" type="submit">Assign order</button>
+          </form><p class="notice" id="deliveryAssignNotice" role="status"></p>
+        </section>
+        <section class="panel"><div class="panel-head"><h3>Delivery assignments</h3><span class="muted">Employee confirms dispatch after agent pickup</span></div>
+          <div class="table-wrap"><table><thead><tr><th>ORDER</th><th>AGENT</th><th>STATUS</th><th>DELIVERY ADDRESS</th><th>ACTION</th></tr></thead><tbody id="deliveryTasksTable"><tr><td colspan="5" class="empty">Loading assignments…</td></tr></tbody></table></div>
+        </section>
+        <section class="panel"><div class="panel-head"><h3>Pending agent reports</h3><span class="muted">Approve only after checking the delivery evidence</span></div>
+          <div class="table-wrap"><table><thead><tr><th>ORDER</th><th>AGENT</th><th>RESULT</th><th>NOTE</th><th>ACTION</th></tr></thead><tbody id="deliveryReportsTable"><tr><td colspan="5" class="empty">Loading reports…</td></tr></tbody></table></div>
+        </section>
       </section>
       <section class="dashboard-page" id="page-reports">
       <div class="page-heading"><div><h1>Reports</h1><p>Order status summaries from your database.</p></div></div>
