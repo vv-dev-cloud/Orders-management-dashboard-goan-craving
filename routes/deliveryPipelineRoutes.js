@@ -1,0 +1,123 @@
+const express = require('express');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const Order = require('../models/Order');
+const DeliveryAgent = require('../models/DeliveryAgent');
+const DeliveryTask = require('../models/DeliveryTask');
+const DeliveryReport = require('../models/DeliveryReport');
+
+const router = express.Router();
+const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+router.get('/tasks', asyncRoute(async (req, res) => {
+  const status = String(req.query.status || '').trim();
+  const filter = status ? { status } : {};
+  const tasks = await DeliveryTask.find(filter).sort({ updatedAt: -1 }).limit(200).lean();
+  res.json({ tasks });
+}));
+
+router.post('/orders/:orderId/assign', asyncRoute(async (req, res) => {
+  const { orderId } = req.params;
+  const agentId = String(req.body.agentId || '').trim();
+  if (!mongoose.isValidObjectId(orderId) || !mongoose.isValidObjectId(agentId)) {
+    return res.status(400).json({ error: 'A valid order ID and delivery-agent ID are required.' });
+  }
+  const [order, agent] = await Promise.all([
+    Order.findById(orderId).lean(),
+    DeliveryAgent.findOne({ _id: agentId, role: 'delivery', isActive: true }).lean()
+  ]);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  if (!agent) return res.status(404).json({ error: 'Active delivery agent not found.' });
+  if (!['confirmed', 'preparing', 'ready_for_pickup'].includes(String(order.orderStatus || '').toLowerCase())) {
+    return res.status(409).json({ error: 'This order is not ready for delivery assignment.' });
+  }
+  const sellers = [...new Set((order.items || []).map(item => String(item.seller || '')).filter(Boolean))];
+  if (sellers.length !== 1) {
+    return res.status(422).json({ error: 'The order must contain items from exactly one registered restaurant before it can be assigned.' });
+  }
+  const existing = await DeliveryTask.findOne({ order: order._id });
+  if (existing && !['pending_assignment', 'assignment_failed', 'delivery_failed', 'returned'].includes(existing.status)) {
+    return res.status(409).json({ error: 'This order already has an active delivery assignment.' });
+  }
+  const now = new Date();
+  const assignmentId = 'GCA-' + crypto.randomUUID();
+  const dropoff = order.deliveryAddress || {};
+  const address = [dropoff.addressLine, dropoff.area, dropoff.city, dropoff.state, dropoff.postalCode].filter(Boolean).join(', ');
+  const event = { status: 'assigned', actorId: req.session.employee.id, actorRole: 'employee', note: 'Assigned by ' + req.session.employee.employeeId, createdAt: now };
+  let task;
+  if (existing) {
+    existing.deliveryPerson = agent._id;
+    existing.restaurant = sellers[0];
+    existing.assignmentId = assignmentId;
+    existing.status = 'assigned';
+    existing.assignedAt = now;
+    existing.acceptedAt = null;
+    existing.pickedUpAt = null;
+    existing.deliveredAt = null;
+    existing.failureReason = '';
+    existing.attemptCount = Number(existing.attemptCount || 0) + 1;
+    existing.dropoff = { address, latitude: dropoff.latitude, longitude: dropoff.longitude };
+    existing.events.push(event);
+    task = await existing.save();
+  } else {
+    task = await DeliveryTask.create({
+      order: order._id, restaurant: sellers[0], deliveryPerson: agent._id,
+      assignmentId, status: 'assigned', assignedAt: now, attemptCount: 1,
+      pickup: {}, dropoff: { address, latitude: dropoff.latitude, longitude: dropoff.longitude },
+      events: [event]
+    });
+  }
+  res.status(201).json({ task: { id: String(task._id), orderId: String(order._id), assignmentId: task.assignmentId, agentId: String(agent._id), status: task.status } });
+}));
+
+router.get('/reports', asyncRoute(async (req, res) => {
+  const status = String(req.query.status || 'PENDING').toUpperCase();
+  const allowed = ['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_CLARIFICATION'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid verification status.' });
+  const reports = await DeliveryReport.find({ verificationStatus: status })
+    .sort({ createdAt: -1 }).limit(200)
+    .populate('order', 'orderNumber orderStatus deliveryAddress total')
+    .populate('deliveryBoy', 'name agentId phone')
+    .lean();
+  res.json({ reports });
+}));
+
+router.patch('/reports/:reportId/verify', asyncRoute(async (req, res) => {
+  const { reportId } = req.params;
+  const verificationStatus = String(req.body.verificationStatus || '').toUpperCase();
+  const employeeNote = String(req.body.employeeNote || '').trim().slice(0, 500);
+  if (!mongoose.isValidObjectId(reportId)) return res.status(400).json({ error: 'Invalid report ID.' });
+  if (!['APPROVED', 'REJECTED', 'NEEDS_CLARIFICATION'].includes(verificationStatus)) {
+    return res.status(400).json({ error: 'Choose APPROVED, REJECTED, or NEEDS_CLARIFICATION.' });
+  }
+  const report = await DeliveryReport.findOne({ _id: reportId, verificationStatus: 'PENDING' });
+  if (!report) return res.status(404).json({ error: 'Pending delivery report not found.' });
+  const now = new Date();
+  report.verificationStatus = verificationStatus;
+  report.employeeNote = employeeNote;
+  report.verifiedBy = req.session.employee.id;
+  report.verifiedAt = now;
+  await report.save();
+
+  const task = await DeliveryTask.findOne({ order: report.order, deliveryPerson: report.deliveryBoy });
+  if (verificationStatus === 'APPROVED' && task) {
+    if (report.result === 'DELIVERED') {
+      task.status = 'delivered';
+      task.deliveredAt = now;
+      task.events.push({ status: 'delivered', actorId: req.session.employee.id, actorRole: 'employee', note: employeeNote || 'Delivery verified by employee.', createdAt: now });
+      await task.save();
+      await Order.updateOne({ _id: report.order }, {
+        $set: { orderStatus: 'delivered' },
+        $push: { statusEvents: { status: 'delivered', actorId: req.session.employee.id, actorRole: 'employee', note: employeeNote || 'Delivery verified by employee.', createdAt: now } }
+      });
+    } else {
+      task.status = 'delivery_failed';
+      task.failureReason = employeeNote || 'Agent reported unable to deliver; employee verified the report.';
+      task.events.push({ status: 'delivery_failed', actorId: req.session.employee.id, actorRole: 'employee', note: task.failureReason, createdAt: now });
+      await task.save();
+    }
+  }
+  res.json({ ok: true, report: { id: String(report._id), verificationStatus: report.verificationStatus }, taskStatus: task?.status || null });
+}));
+
+module.exports = router;
