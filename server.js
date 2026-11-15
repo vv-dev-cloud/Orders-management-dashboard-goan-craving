@@ -157,7 +157,7 @@ app.get("/api/orders", requireEmployee, asyncRoute(async (req, res) => {
 app.patch("/api/orders/:id/status", requireEmployee, asyncRoute(async (req, res) => {
   const allowed = {
     "Placed": "placed", "Confirmed": "confirmed", "Preparing": "preparing",
-    "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
+    "Ready for pickup": "ready_for_pickup", "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
   };
   if (!allowed[req.body.status]) return res.status(400).json({ error: "Invalid order status" });
   const order = await Order.findByIdAndUpdate(req.params.id, { orderStatus: allowed[req.body.status] }, { new: true, runValidators: true }).lean();
