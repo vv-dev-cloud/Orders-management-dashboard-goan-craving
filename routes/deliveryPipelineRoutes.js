@@ -70,6 +70,22 @@ router.post('/orders/:orderId/assign', asyncRoute(async (req, res) => {
   res.status(201).json({ task: { id: String(task._id), orderId: String(order._id), assignmentId: task.assignmentId, agentId: String(agent._id), status: task.status } });
 }));
 
+router.patch('/tasks/:taskId/dispatch', asyncRoute(async (req, res) => {
+  const { taskId } = req.params;
+  if (!mongoose.isValidObjectId(taskId)) return res.status(400).json({ error: 'Invalid delivery task ID.' });
+  const task = await DeliveryTask.findOne({ _id: taskId, status: 'picked_up' });
+  if (!task) return res.status(404).json({ error: 'A picked-up task was not found.' });
+  const now = new Date();
+  task.status = 'en_route';
+  task.events.push({ status: 'en_route', actorId: req.session.employee.id, actorRole: 'employee', note: 'Employee confirmed dispatch.', createdAt: now });
+  await task.save();
+  await Order.updateOne({ _id: task.order, orderStatus: { $ne: 'delivered' } }, {
+    $set: { orderStatus: 'out_for_delivery' },
+    $push: { statusEvents: { status: 'out_for_delivery', actorId: req.session.employee.id, actorRole: 'employee', note: 'Dispatch confirmed by operations.', createdAt: now } }
+  });
+  res.json({ ok: true, taskId: String(task._id), status: task.status });
+}));
+
 router.get('/reports', asyncRoute(async (req, res) => {
   const status = String(req.query.status || 'PENDING').toUpperCase();
   const allowed = ['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_CLARIFICATION'];
@@ -93,31 +109,37 @@ router.patch('/reports/:reportId/verify', asyncRoute(async (req, res) => {
   const report = await DeliveryReport.findOne({ _id: reportId, verificationStatus: 'PENDING' });
   if (!report) return res.status(404).json({ error: 'Pending delivery report not found.' });
   const now = new Date();
-  report.verificationStatus = verificationStatus;
-  report.employeeNote = employeeNote;
-  report.verifiedBy = req.session.employee.id;
-  report.verifiedAt = now;
-  await report.save();
-
   const task = await DeliveryTask.findOne({ order: report.order, deliveryPerson: report.deliveryBoy });
+
+  // Apply idempotent operational changes before closing the report. If a write fails,
+  // the report remains pending and an employee can safely retry the verification.
   if (verificationStatus === 'APPROVED' && task) {
     if (report.result === 'DELIVERED') {
-      task.status = 'delivered';
-      task.deliveredAt = now;
-      task.events.push({ status: 'delivered', actorId: req.session.employee.id, actorRole: 'employee', note: employeeNote || 'Delivery verified by employee.', createdAt: now });
-      await task.save();
-      await Order.updateOne({ _id: report.order }, {
+      if (task.status !== 'delivered') {
+        task.status = 'delivered';
+        task.deliveredAt = now;
+        task.events.push({ status: 'delivered', actorId: req.session.employee.id, actorRole: 'employee', note: employeeNote || 'Delivery verified by employee.', createdAt: now });
+        await task.save();
+      }
+      await Order.updateOne({ _id: report.order, orderStatus: { $ne: 'delivered' } }, {
         $set: { orderStatus: 'delivered' },
         $push: { statusEvents: { status: 'delivered', actorId: req.session.employee.id, actorRole: 'employee', note: employeeNote || 'Delivery verified by employee.', createdAt: now } }
       });
-    } else {
+    } else if (task.status !== 'delivery_failed') {
       task.status = 'delivery_failed';
       task.failureReason = employeeNote || 'Agent reported unable to deliver; employee verified the report.';
       task.events.push({ status: 'delivery_failed', actorId: req.session.employee.id, actorRole: 'employee', note: task.failureReason, createdAt: now });
       await task.save();
     }
   }
-  res.json({ ok: true, report: { id: String(report._id), verificationStatus: report.verificationStatus }, taskStatus: task?.status || null });
+
+  const closed = await DeliveryReport.findOneAndUpdate(
+    { _id: reportId, verificationStatus: 'PENDING' },
+    { $set: { verificationStatus, employeeNote, verifiedBy: req.session.employee.id, verifiedAt: now } },
+    { new: true }
+  );
+  if (!closed) return res.status(409).json({ error: 'This report was verified by another employee. Refresh and review its latest status.' });
+  res.json({ ok: true, report: { id: String(closed._id), verificationStatus: closed.verificationStatus }, taskStatus: task?.status || null });
 }));
 
 module.exports = router;
