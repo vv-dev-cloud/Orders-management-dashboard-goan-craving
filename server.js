@@ -160,9 +160,22 @@ app.patch("/api/orders/:id/status", requireEmployee, asyncRoute(async (req, res)
     "Ready for pickup": "ready_for_pickup", "Out for delivery": "out_for_delivery", "Delivered": "delivered", "Cancelled": "cancelled"
   };
   if (!allowed[req.body.status]) return res.status(400).json({ error: "Invalid order status" });
-  const order = await Order.findByIdAndUpdate(req.params.id, { orderStatus: allowed[req.body.status] }, { new: true, runValidators: true }).lean();
+  const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
-  res.json(toDashboardOrder(order));
+  const nextStatus = allowed[req.body.status];
+  const previousStatus = order.orderStatus;
+  if (previousStatus !== nextStatus) {
+    order.orderStatus = nextStatus;
+    order.statusEvents.push({
+      status: nextStatus,
+      actorId: req.session.employee.id,
+      actorRole: "employee",
+      note: "Order status updated by " + req.session.employee.employeeId,
+      createdAt: new Date()
+    });
+    await order.save();
+  }
+  res.json(toDashboardOrder(order.toObject()));
 }));
 
 app.post("/api/support/:id/accept", requireEmployee, asyncRoute(async (req, res) => {
