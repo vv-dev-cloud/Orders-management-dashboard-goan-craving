@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const schema = new mongoose.Schema({
   order: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodOrder', required: true, index: true },
-  deliveryBoy: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  deliveryBoy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryAgent', required: true, index: true },
   result: { type: String, enum: ['DELIVERED', 'UNABLE_TO_DELIVER'], required: true },
   customerOtp: { type: String, select: false },
   proofNote: { type: String, maxlength: 1000 },
